@@ -1,0 +1,55 @@
+/* stylelint-disable at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-navy antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  /* Dynamic Glassmorphism System */
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl transition-all duration-300;
+  }
+  
+  .glass-card-dark {
+    @apply bg-navy/80 backdrop-blur-xl border border-white/10 shadow-2xl rounded-3xl transition-all duration-500;
+  }
+  
+  /* Brand-specific interactive elements */
+  .btn-gold {
+    @apply bg-gold text-navy font-bold py-3 px-8 rounded-xl transition-all duration-300 transform shadow-lg flex items-center justify-center gap-2;
+  }
+
+  .btn-gold:hover {
+    @apply bg-gold-light;
+    transform: scale(1.02);
+  }
+
+  .btn-gold:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-outline {
+    @apply border-2 border-slate-200 text-navy font-bold py-3 px-8 rounded-xl transition-all duration-300 flex items-center justify-center gap-2;
+  }
+
+  .btn-outline:hover {
+    @apply border-gold text-gold;
+  }
+
+  /* Premium decorative states */
+  .premium-gradient-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-navy via-gold to-gold-light;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
