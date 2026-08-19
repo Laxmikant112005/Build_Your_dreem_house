@@ -1,15 +1,133 @@
-import React, { useEffect, useMemo } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useMemo } from "react";
+import {
+  Navigate,
+  Outlet,
+  Link,
+  useLocation,
+} from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
+/**
+ * Normalize role values coming from the backend.
+ *
+ * Supports:
+ * USER
+ * user
+ * User
+ * ROLE_USER
+ * " ENGINEER "
+ */
 const normalizeRole = (role) => {
   if (role === null || role === undefined) {
-    return '';
+    return "";
   }
 
-  return String(role).trim().toUpperCase();
+  return String(role)
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE_/, "");
 };
 
+/**
+ * Convert allowedRoles into a safe normalized array.
+ *
+ * Supports:
+ * allowedRoles={["USER", "ENGINEER"]}
+ * allowedRoles="ENGINEER"
+ */
+const normalizeAllowedRoles = (roles) => {
+  if (!roles) {
+    return [];
+  }
+
+  const roleArray = Array.isArray(roles)
+    ? roles
+    : [roles];
+
+  return roleArray
+    .map(normalizeRole)
+    .filter(Boolean);
+};
+
+/**
+ * Safely convert authentication errors into displayable text.
+ */
+const getErrorMessage = (error) => {
+  if (!error) {
+    return "We could not restore your session. Please sign in again.";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error?.message) {
+    return String(error.message);
+  }
+
+  return "We could not restore your session. Please sign in again.";
+};
+
+/**
+ * Generic authentication error screen.
+ */
+const AuthErrorScreen = ({
+  title,
+  message,
+  buttonText = "Go to Login",
+}) => {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
+      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10">
+          <span className="text-2xl font-black text-red-500">
+            !
+          </span>
+        </div>
+
+        <h1 className="mt-6 text-2xl font-extrabold text-navy">
+          {title}
+        </h1>
+
+        <p className="mt-3 text-sm leading-relaxed text-slate-500">
+          {message}
+        </p>
+
+        <Link
+          to="/login"
+          replace
+          className="mt-7 inline-flex items-center justify-center rounded-2xl bg-navy px-6 py-3 font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          {buttonText}
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * ProtectedRoute
+ *
+ * Authentication:
+ * - User must be logged in.
+ *
+ * Authorization:
+ * - If allowedRoles is provided, user's role must match.
+ *
+ * Example:
+ *
+ * <ProtectedRoute allowedRoles={["ENGINEER"]}>
+ *   <EngineerDashboard />
+ * </ProtectedRoute>
+ *
+ * Or:
+ *
+ * <Route
+ *   element={<ProtectedRoute allowedRoles={["ADMIN"]} />}
+ * >
+ *   <Route path="/admin/dashboard" element={<AdminDashboard />} />
+ * </Route>
+ */
 const ProtectedRoute = ({
   allowedRoles = [],
   children,
@@ -23,79 +141,150 @@ const ProtectedRoute = ({
 
   const location = useLocation();
 
-  // ============================================================
-  // NORMALIZE USER ROLE
-  // ============================================================
+  /**
+   * Normalize current user's role.
+   */
+  const normalizedUserRole = useMemo(
+    () => normalizeRole(user?.role),
+    [user?.role]
+  );
 
-  const normalizedUserRole = useMemo(() => {
-    return normalizeRole(user?.role);
-  }, [user?.role]);
+  /**
+   * Normalize required roles.
+   */
+  const normalizedAllowedRoles = useMemo(
+    () => normalizeAllowedRoles(allowedRoles),
+    [allowedRoles]
+  );
 
-  // ============================================================
-  // NORMALIZE ALLOWED ROLES
-  // ============================================================
+  /**
+   * Preserve the complete requested URL.
+   *
+   * Example:
+   * /engineer/projects?id=123#details
+   *
+   * instead of only:
+   * /engineer/projects
+   */
+  const currentPath = useMemo(() => {
+    return `${location.pathname}${location.search}${location.hash}`;
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+  ]);
 
-  const normalizedAllowedRoles = useMemo(() => {
-    return allowedRoles
-      .map(normalizeRole)
-      .filter(Boolean);
-  }, [allowedRoles]);
+  /**
+   * Authentication error message.
+   */
+  const safeAuthError = useMemo(
+    () => getErrorMessage(authError),
+    [authError]
+  );
 
+  /**
+   * Determine whether this route requires a specific role.
+   *
+   * Empty allowedRoles means:
+   * any authenticated user may access.
+   */
+  const roleRequired =
+    normalizedAllowedRoles.length > 0;
+
+  /**
+   * Role authorization.
+   *
+   * SECURITY:
+   * If a role is required and the user has no role,
+   * access is denied.
+   */
+  const hasRoleAccess =
+    !roleRequired
+      ? true
+      : normalizedAllowedRoles.includes(
+          normalizedUserRole
+        );
+
+  /**
+   * Development diagnostics.
+   *
+   * This is intentionally kept out of production.
+   */
   useEffect(() => {
-    if (!import.meta.env.DEV) {
-      return;
-    }
-
-    if (loading) {
+    if (!import.meta.env.DEV || loading) {
       return;
     }
 
     console.groupCollapsed(
       `%c[ProtectedRoute] ${location.pathname}`,
-      'color:#d4af37;font-weight:bold;'
+      "color:#d4af37;font-weight:bold;"
     );
 
-    console.log('Authentication state:', authState);
-    console.log('User:', user);
-    console.log('Raw user role:', user?.role);
-    console.log('Normalized user role:', normalizedUserRole);
-    console.log('Allowed roles:', allowedRoles);
+    console.log("Auth state:", authState);
+    console.log("Authenticated:", Boolean(user));
+    console.log("User role:", user?.role);
     console.log(
-      'Normalized allowed roles:',
+      "Normalized role:",
+      normalizedUserRole
+    );
+
+    console.log(
+      "Required roles:",
       normalizedAllowedRoles
     );
 
-    const hasRoleAccess =
-      normalizedAllowedRoles.length === 0 ||
-      normalizedAllowedRoles.includes(normalizedUserRole);
+    console.log(
+      "Role required:",
+      roleRequired
+    );
 
-    console.log('Role access:', hasRoleAccess);
-    console.log('Auth error:', authError);
+    console.log(
+      "Role access:",
+      hasRoleAccess
+    );
+
+    if (!hasRoleAccess && roleRequired) {
+      console.error(
+        "ACCESS DENIED: role mismatch",
+        {
+          currentPath,
+          userRole: normalizedUserRole,
+          requiredRoles: normalizedAllowedRoles,
+        }
+      );
+    }
+
+    if (authError) {
+      console.error(
+        "Authentication error:",
+        authError
+      );
+    }
 
     console.groupEnd();
   }, [
     loading,
     authState,
     authError,
-    user,
-    allowedRoles,
+    user?.role,
     normalizedUserRole,
     normalizedAllowedRoles,
+    roleRequired,
+    hasRoleAccess,
+    currentPath,
     location.pathname,
   ]);
 
-  // ============================================================
-  // AUTHENTICATION LOADING
-  // ============================================================
-
+  /**
+   * ----------------------------------------------------------
+   * 1. AUTHENTICATION LOADING
+   * ----------------------------------------------------------
+   */
   if (loading) {
     return (
       <div className="min-h-screen w-full bg-navy flex items-center justify-center px-6">
         <div className="flex flex-col items-center">
-
-          {/* Animated loader */}
           <div className="relative h-16 w-16">
-
             <div className="absolute inset-0 rounded-full border-4 border-white/10" />
 
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-gold animate-spin" />
@@ -115,127 +304,79 @@ const ProtectedRoute = ({
     );
   }
 
-  // ============================================================
-  // AUTH ERROR WITHOUT USER
-  // ============================================================
-
-  if (!user && authState === 'error') {
+  /**
+   * ----------------------------------------------------------
+   * 2. AUTHENTICATION FAILED
+   * ----------------------------------------------------------
+   *
+   * Only show an authentication error if there is
+   * genuinely no authenticated user.
+   */
+  if (!user && authState === "error") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
-
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
-
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10">
-            <span className="text-2xl font-black text-red-500">
-              !
-            </span>
-          </div>
-
-          <h1 className="mt-6 text-2xl font-extrabold text-navy">
-            Session Issue
-          </h1>
-
-          <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            {authError ||
-              'We could not restore your session. Please sign in again.'}
-          </p>
-
-          <a
-            href="/login"
-            className="mt-7 inline-flex items-center justify-center rounded-2xl bg-navy px-6 py-3 font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
+      <AuthErrorScreen
+        title="Session Issue"
+        message={safeAuthError}
+      />
     );
   }
 
-  // ============================================================
-  // NOT AUTHENTICATED
-  // ============================================================
-
+  /**
+   * ----------------------------------------------------------
+   * 3. NOT AUTHENTICATED
+   * ----------------------------------------------------------
+   */
   if (!user) {
     return (
       <Navigate
         to="/login"
         replace
         state={{
-          from: location.pathname,
+          from: currentPath,
         }}
       />
     );
   }
 
-  // ============================================================
-  // USER HAS NO ROLE
-  // ============================================================
-
+  /**
+   * ----------------------------------------------------------
+   * 4. AUTHENTICATED BUT ROLE IS MISSING
+   * ----------------------------------------------------------
+   */
   if (!normalizedUserRole) {
     if (import.meta.env.DEV) {
       console.error(
-        '[ProtectedRoute] User is authenticated but has no role.',
-        user
+        "[ProtectedRoute] Authenticated user has no valid role.",
+        {
+          user,
+          currentPath,
+        }
       );
     }
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
-
-        <div className="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-xl">
-
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10">
-            <span className="text-2xl font-black text-amber-600">
-              !
-            </span>
-          </div>
-
-          <h1 className="mt-6 text-2xl font-extrabold text-navy">
-            Account Role Missing
-          </h1>
-
-          <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            Your account is authenticated, but no valid account
-            role was returned. Please sign in again.
-          </p>
-
-          <a
-            href="/login"
-            className="mt-7 inline-flex items-center justify-center rounded-2xl bg-navy px-6 py-3 font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
-          >
-            Sign In Again
-          </a>
-        </div>
-      </div>
+      <AuthErrorScreen
+        title="Account Role Missing"
+        message="Your account is authenticated, but no valid account role was returned. Please sign in again."
+        buttonText="Sign In Again"
+      />
     );
   }
 
-  // ============================================================
-  // ROLE AUTHORIZATION
-  // ============================================================
-
-  const roleRequired =
-    normalizedAllowedRoles.length > 0;
-
-  const hasRoleAccess =
-    !roleRequired ||
-    normalizedAllowedRoles.includes(normalizedUserRole);
-
-  // ============================================================
-  // ACCESS DENIED
-  // ============================================================
-
+  /**
+   * ----------------------------------------------------------
+   * 5. ROLE AUTHORIZATION
+   * ----------------------------------------------------------
+   */
   if (!hasRoleAccess) {
     if (import.meta.env.DEV) {
       console.error(
-        '[ProtectedRoute] ACCESS DENIED',
+        "[ProtectedRoute] ACCESS DENIED",
         {
-          path: location.pathname,
+          path: currentPath,
           userRole: user?.role,
           normalizedUserRole,
-          allowedRoles,
-          normalizedAllowedRoles,
-          user,
+          requiredRoles: normalizedAllowedRoles,
         }
       );
     }
@@ -245,7 +386,7 @@ const ProtectedRoute = ({
         to="/unauthorized"
         replace
         state={{
-          from: location.pathname,
+          from: currentPath,
           requiredRoles: normalizedAllowedRoles,
           userRole: normalizedUserRole,
         }}
@@ -253,11 +394,12 @@ const ProtectedRoute = ({
     );
   }
 
-  // ============================================================
-  // AUTHORIZED
-  // ============================================================
-
-  return children ? children : <Outlet />;
+  /**
+   * ----------------------------------------------------------
+   * 6. AUTHORIZED
+   * ----------------------------------------------------------
+   */
+  return children || <Outlet />;
 };
 
 export default ProtectedRoute;
