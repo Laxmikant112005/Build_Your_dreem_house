@@ -1,80 +1,78 @@
-/**
- * BuildMyHome - Multer Configuration
- * File upload configuration with local and S3 support
- */
-
 const multer = require('multer');
-const path = require('path');
-// uuid v9+ uses ESM in dist; Jest (CommonJS) can fail when importing it at runtime.
-// This middleware only needs UUIDs for filenames; keep upload config working in CJS.
-let uuidv4;
-try {
-  // eslint-disable-next-line import/no-extraneous-dependencies
-  ({ v4: uuidv4 } = require('uuid'));
-} catch (e) {
-  uuidv4 = () => `test-${Date.now()}`;
-}
-
 const config = require('./index');
-
-// Configure storage
 const storage = multer.memoryStorage();
 
-// File filter for images
-const imageFileFilter = (req, file, cb) => {
-  if (config.upload.allowedImageTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error(`Invalid file type. Allowed: ${config.upload.allowedImageTypes.join(', ')}`), false);
-  }
+const createFileFilter = (allowedTypes, category) => {
+  return (req, file, cb) => {
+    if (!file || !file.mimetype) {
+      return cb(
+        new Error(`Invalid ${category}: missing MIME type.`),
+        false
+      );
+    }
+
+    if (allowedTypes.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+
+    return cb(
+      new Error(
+        `Invalid ${category} type: ${file.mimetype}. ` +
+        `Allowed types: ${allowedTypes.join(', ')}`
+      ),
+      false
+    );
+  };
+};
+const imageFileFilter = createFileFilter(
+  config.upload.allowedImageTypes,
+  'image'
+);
+
+const documentTypes = [
+  ...config.upload.allowedDocumentTypes,
+  ...config.upload.allowedCadTypes,
+  ...config.upload.allowed3DTypes,
+];
+
+const documentFileFilter = createFileFilter(
+  documentTypes,
+  'document'
+);
+
+const singleFileLimits = {
+  fileSize: config.upload.maxFileSize,
 };
 
-// File filter for documents
-const documentFileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    ...config.upload.allowedDocumentTypes,
-    ...config.upload.allowedCadTypes,
-    ...config.upload.allowed3DTypes,
-  ];
-  
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error(`Invalid file type`), false);
-  }
+const multipleImageLimits = {
+  fileSize: config.upload.maxFileSize,
+  files: config.upload.maxImages,
 };
-
-// Create multer upload instances
-const uploadImage = multer({
+const imageUpload = multer({
   storage,
   fileFilter: imageFileFilter,
-  limits: {
-    fileSize: config.upload.maxFileSize,
-  },
+  limits: singleFileLimits,
 });
 
-const uploadImages = multer({
+const imagesUpload = multer({
   storage,
   fileFilter: imageFileFilter,
-  limits: {
-    fileSize: config.upload.maxFileSize,
-    files: config.upload.maxImages,
-  },
+  limits: multipleImageLimits,
 });
 
-const uploadFile = multer({
+const fileUpload = multer({
   storage,
   fileFilter: documentFileFilter,
-  limits: {
-    fileSize: config.upload.maxFileSize,
-  },
+  limits: singleFileLimits,
 });
-
-// Export configured upload middleware
 module.exports = {
-  uploadImage: uploadImage.single('image'),
-  uploadImages: uploadImages.array('images', config.upload.maxImages),
-  uploadFile: uploadFile.single('file'),
-  uploadDesignFile: uploadFile.single('file'),
-};
+  
+  uploadImage: imageUpload.single('image'),
 
+  uploadImages: imagesUpload.array(
+    'images',
+    config.upload.maxImages
+  ),
+  uploadFile: fileUpload.single('file'),
+  uploadDesignFile: fileUpload.single('file'),
+};

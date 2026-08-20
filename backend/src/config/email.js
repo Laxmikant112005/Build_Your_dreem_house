@@ -1,17 +1,51 @@
-// Email (SMTP) configuration template
-// Replace placeholders with your SMTP provider or use a service like SendGrid/Mailgun.
+/**
+ * Planova - Email / SMTP Configuration
+ *
+ * SMTP credentials must be provided through environment variables.
+ */
+
+const getRequiredEnv = (name) => {
+  const value = process.env[name];
+
+  if (!value || value.trim() === '') {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+
+  return value.trim();
+};
+
+const getPort = () => {
+  const value = process.env.EMAIL_PORT || '587';
+  const port = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `Invalid EMAIL_PORT: "${value}". Expected a valid port number.`
+    );
+  }
+
+  return port;
+};
+
+const port = getPort();
 
 module.exports = {
   email: {
-    host: process.env.EMAIL_HOST || '<SMTP_HOST>',
-    port: process.env.EMAIL_PORT ? parseInt(process.env.EMAIL_PORT, 10) : 587,
-    secure: process.env.EMAIL_SECURE === 'true', // false for TLS
-    auth: {
-      user: process.env.EMAIL_USER || '<SMTP_USER>',
-      pass: process.env.EMAIL_PASS || '<SMTP_PASS>',
-    },
-    from: process.env.EMAIL_FROM || 'no-reply@example.com',
-  },
+    host: getRequiredEnv('EMAIL_HOST'),
+    port,
 
-  // Example: export a nodemailer transporter in real implementation.
+    // Port 465 normally uses implicit TLS.
+    // Port 587 normally uses STARTTLS.
+    secure:
+      process.env.EMAIL_SECURE !== undefined
+        ? process.env.EMAIL_SECURE === 'true'
+        : port === 465,
+
+    auth: {
+      user: getRequiredEnv('EMAIL_USER'),
+      pass: getRequiredEnv('EMAIL_PASS'),
+    },
+
+    from: getRequiredEnv('EMAIL_FROM'),
+  },
 };

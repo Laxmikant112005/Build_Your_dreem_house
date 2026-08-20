@@ -1,135 +1,458 @@
-/**
- * BuildMyHome - Server Entry Point
- * Main server initialization and configuration
- */
-
 const app = require('./app');
 const config = require('./config');
-const { connectDatabase } = require('./config/database');
-const { connectRedis, disconnectRedis } = require('./config/redis');
+
+const {
+  connectDatabase,
+  disconnectDatabase,
+} = require('./config/database');
+
+const {
+  connectRedis,
+  disconnectRedis,
+} = require('./config/redis');
+
 const { initializeSocket } = require('./sockets');
+
 const logger = require('./utils/logger');
 
-// simple sleep helper
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+let server = null;
+let redisClient = null;
+let socketInitialized = false;
+let isShuttingDown = false;
 
 /**
- * Try to connect to Redis with limited retries and backoff.
- * If REDIS_ENABLED is false, skip immediately. On permanent failure,
- * ensure any partially-created client is disconnected to prevent reconnect spam.
+ * Sleep helper.
  */
-const tryConnectRedis = async ({ maxAttempts = 3, initialBackoff = 200 } = {}) => {
-  const enabled = (process.env.REDIS_ENABLED || 'true').toString().toLowerCase();
-  if (enabled === 'false' || enabled === '0' || enabled === 'no') {
-    logger.info('Redis: disabled via REDIS_ENABLED; continuing without Redis');
+const sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Check whether Redis is enabled.
+ */
+const isRedisEnabled = () => {
+  const value = String(
+    process.env.REDIS_ENABLED ?? 'true'
+  ).toLowerCase();
+
+  return !['false', '0', 'no', 'off'].includes(value);
+};
+
+
+const isRedisConnected = () => {
+  return (
+    redisClient &&
+    redisClient.status === 'ready'
+  );
+};
+
+
+const tryConnectRedis = async ({
+  maxAttempts = 3,
+  initialBackoff = 500,
+} = {}) => {
+  if (!isRedisEnabled()) {
+    logger.info(
+      'Redis: disabled via REDIS_ENABLED; continuing without Redis'
+    );
+
     return null;
   }
 
-  let lastErr = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      // connectRedis reads host/port/password from config which sources env vars
-      const client = await connectRedis();
-      logger.info('Redis: connected');
-      return client;
-    } catch (err) {
-      lastErr = err;
-      logger.debug(`Redis: connection attempt ${attempt}/${maxAttempts} failed: ${err && err.message}`);
+  let lastError = null;
 
-      // If there's a partially initialized client, disconnect to avoid reconnect loops
+  for (
+    let attempt = 1;
+    attempt <= maxAttempts;
+    attempt++
+  ) {
+    try {
+      logger.info(
+        `Redis: connection attempt ${attempt}/${maxAttempts}`
+      );
+
+      const client = await connectRedis();
+
+      if (
+        client &&
+        client.status === 'ready'
+      ) {
+        logger.info('Redis: connected');
+        return client;
+      }
+
+      throw new Error(
+        'Redis connection returned without a ready client'
+      );
+    } catch (error) {
+      lastError = error;
+
+      logger.warn(
+        `Redis: connection attempt ${attempt}/${maxAttempts} failed: ${error.message}`
+      );
+
       try {
         await disconnectRedis();
-      } catch (e) {
-        // ignore
+      } catch (disconnectError) {
+        logger.debug(
+          `Redis: cleanup after failed connection failed: ${disconnectError.message}`
+        );
       }
 
       if (attempt < maxAttempts) {
-        const backoff = Math.min(2000, initialBackoff * Math.pow(2, attempt - 1));
-        await sleep(backoff + Math.floor(Math.random() * 100));
-        continue;
+        const backoff = Math.min(
+          3000,
+          initialBackoff * Math.pow(2, attempt - 1)
+        );
+
+        const jitter =
+          Math.floor(Math.random() * 250);
+
+        await sleep(backoff + jitter);
       }
     }
   }
 
-  logger.warn('Redis: unavailable after retries — continuing without Redis', lastErr ? lastErr.message : '');
+  logger.warn(
+    `Redis: unavailable after ${maxAttempts} attempts. Continuing without Redis.`,
+    lastError?.message || ''
+  );
+
   return null;
 };
 
 /**
- * Start the server safely.
- * - MongoDB is required; exit on failure
- * - Redis is optional and non-blocking; continue if unavailable
- * - Socket.io initialized but protected from crashing the server
+ * Close the HTTP server.
+ */
+const closeHttpServer = () => {
+  return new Promise((resolve) => {
+    if (!server) {
+      return resolve();
+    }
+
+    server.close((error) => {
+      if (error) {
+        logger.error(
+          'HTTP server close error:',
+          error
+        );
+      } else {
+        logger.info(
+          'HTTP server closed'
+        );
+      }
+
+      resolve();
+    });
+  });
+};
+
+/**
+ * Gracefully shut down the application.
+ */
+const shutdown = async (
+  signal = 'UNKNOWN',
+  exitCode = 0
+) => {
+  /**
+   * Prevent multiple shutdown attempts.
+   */
+  if (isShuttingDown) {
+    logger.warn(
+      'Shutdown already in progress'
+    );
+
+    return;
+  }
+
+  isShuttingDown = true;
+
+  logger.info(
+    `${signal} received — starting graceful shutdown`
+  );
+
+  /**
+   * Stop accepting new HTTP requests first.
+   */
+  try {
+    await closeHttpServer();
+  } catch (error) {
+    logger.error(
+      'Error while closing HTTP server:',
+      error
+    );
+  }
+
+  /**
+   * Close Redis.
+   */
+  try {
+    await disconnectRedis();
+
+    redisClient = null;
+
+    logger.info(
+      'Redis: shutdown complete'
+    );
+  } catch (error) {
+    logger.error(
+      'Redis: shutdown error:',
+      error
+    );
+  }
+
+  /**
+   * Close MongoDB.
+   */
+  try {
+    await disconnectDatabase();
+
+    logger.info(
+      'MongoDB: shutdown complete'
+    );
+  } catch (error) {
+    logger.error(
+      'MongoDB: shutdown error:',
+      error
+    );
+  }
+
+  logger.info(
+    `Planova shutdown complete. Exit code: ${exitCode}`
+  );
+
+  process.exitCode = exitCode;
+};
+
+/**
+ * Handle unexpected errors.
+ *
+ * These handlers should not attempt to continue running
+ * after an uncaught exception because application state
+ * may be corrupted.
+ */
+const registerProcessHandlers = () => {
+  process.once(
+    'unhandledRejection',
+    async (reason) => {
+      logger.error(
+        'Unhandled Promise Rejection:',
+        reason
+      );
+
+      await shutdown(
+        'UNHANDLED_REJECTION',
+        1
+      );
+    }
+  );
+
+  process.once(
+    'uncaughtException',
+    async (error) => {
+      logger.error(
+        'Uncaught Exception:',
+        error
+      );
+
+      await shutdown(
+        'UNCAUGHT_EXCEPTION',
+        1
+      );
+    }
+  );
+
+  process.once(
+    'SIGTERM',
+    async () => {
+      await shutdown(
+        'SIGTERM',
+        0
+      );
+    }
+  );
+
+  process.once(
+    'SIGINT',
+    async () => {
+      await shutdown(
+        'SIGINT',
+        0
+      );
+    }
+  );
+};
+
+/**
+ * Start HTTP server.
+ */
+const startHttpServer = () => {
+  return new Promise((resolve, reject) => {
+    server = app.listen(
+      config.port,
+      () => {
+        resolve(server);
+      }
+    );
+
+    server.once(
+      'error',
+      reject
+    );
+  });
+};
+
+/**
+ * Start application.
  */
 const startServer = async () => {
-  let server;
   try {
-    // 1) Connect to MongoDB (critical). connectDatabase should use process.env.MONGODB_URI
+    registerProcessHandlers();
+
+    logger.info(
+      '------------------------------------------------------------'
+    );
+
+    logger.info(
+      'Starting Planova backend...'
+    );
+
+    logger.info(
+      `Environment : ${config.env}`
+    );
+
+    logger.info(
+      `Node        : ${process.version}`
+    );
+
+    /**
+     * 1. MongoDB
+     *
+     * MongoDB is required.
+     */
+    logger.info(
+      'MongoDB: connecting...'
+    );
+
     await connectDatabase();
-    logger.info('MongoDB: connected');
 
-    // 2) Try Redis (optional)
-    let redisClient = null;
-    try {
-      redisClient = await tryConnectRedis({ maxAttempts: 3 });
-    } catch (redisUnexpected) {
-      // tryConnectRedis handles retries and logging; this is a guard
-      logger.warn('Redis: unexpected error during connection attempts', redisUnexpected && redisUnexpected.message);
-    }
+    logger.info(
+      'MongoDB: connected'
+    );
 
-    // 3) Start HTTP server
-    server = app.listen(config.port, () => {
-      // Clean startup banner
-      logger.info('------------------------------------------------------------');
-      logger.info(`BuildMyHome API Server`);
-      logger.info(`Environment : ${config.env}`);
-      logger.info(`Port        : ${config.port}`);
-      logger.info(`Node        : ${process.version}`);
-      logger.info(`Server URL  : http://localhost:${config.port}`);
-      const redisEnabled = (process.env.REDIS_ENABLED || 'true').toString().toLowerCase();
-      let redisStatus = 'unknown';
-      if (redisEnabled === 'false' || redisEnabled === '0' || redisEnabled === 'no') redisStatus = 'disabled';
-      else redisStatus = redisClient ? 'connected' : 'unavailable';
-
-      logger.info(`MongoDB     : connected`);
-      logger.info(`Redis       : ${redisStatus}`);
-      logger.info('------------------------------------------------------------');
-    });
-
-    // 4) Initialize Socket.io (wrapped)
-    try {
-      const io = initializeSocket(server);
-      // Optional: log each new connection in socket handler (sockets module already logs)
-      logger.info('Socket.io: initialized');
-    } catch (sockErr) {
-      logger.warn('Socket.io: failed to initialize (continuing without real-time features)', sockErr && sockErr.message);
-    }
-
-    // Global error handlers
-    process.on('unhandledRejection', (err) => {
-      logger.error('Unhandled Rejection:', err);
-      if (server) server.close(() => process.exit(1));
-    });
-
-    process.on('uncaughtException', (err) => {
-      logger.error('Uncaught Exception:', err);
-      if (server) server.close(() => process.exit(1));
-    });
-
-    process.on('SIGTERM', async () => {
-      logger.info('SIGTERM received — shutting down gracefully');
-      if (server) server.close(() => {
-        logger.info('HTTP server closed');
-        process.exit(0);
+    /**
+     * 2. Redis
+     *
+     * Redis is optional.
+     */
+    redisClient =
+      await tryConnectRedis({
+        maxAttempts: 3,
+        initialBackoff: 500,
       });
-    });
 
-  } catch (err) {
-    // MongoDB failure or other fatal errors
-    logger.error('Failed to start server (fatal):', err && err.message ? err.message : err);
-    process.exit(1);
+    /**
+     * 3. HTTP server
+     */
+    await startHttpServer();
+
+    /**
+     * 4. Socket.IO
+     */
+    try {
+      initializeSocket(server);
+
+      socketInitialized = true;
+
+      logger.info(
+        'Socket.io: initialized'
+      );
+    } catch (error) {
+      socketInitialized = false;
+
+      logger.warn(
+        `Socket.io: failed to initialize. Continuing without real-time features: ${error.message}`
+      );
+    }
+
+    /**
+     * Startup status.
+     */
+    logger.info(
+      '------------------------------------------------------------'
+    );
+
+    logger.info(
+      'Planova API Server started successfully'
+    );
+
+    logger.info(
+      `Environment : ${config.env}`
+    );
+
+    logger.info(
+      `Port        : ${config.port}`
+    );
+
+    logger.info(
+      `Server URL  : ${config.apiUrl || `http://localhost:${config.port}`}`
+    );
+
+    logger.info(
+      'MongoDB     : connected'
+    );
+
+    logger.info(
+      `Redis       : ${
+        !isRedisEnabled()
+          ? 'disabled'
+          : isRedisConnected()
+            ? 'connected'
+            : 'unavailable'
+      }`
+    );
+
+    logger.info(
+      `Socket.io   : ${
+        socketInitialized
+          ? 'initialized'
+          : 'unavailable'
+      }`
+    );
+
+    logger.info(
+      '------------------------------------------------------------'
+    );
+
+    return server;
+  } catch (error) {
+    logger.error(
+      'Failed to start Planova server:',
+      error
+    );
+
+    try {
+      await disconnectRedis();
+    } catch (redisError) {
+      logger.error(
+        'Redis cleanup failed:',
+        redisError
+      );
+    }
+
+    try {
+      await disconnectDatabase();
+    } catch (databaseError) {
+      logger.error(
+        'MongoDB cleanup failed:',
+        databaseError
+      );
+    }
+
+    process.exitCode = 1;
+
+    return null;
   }
 };
 
-startServer();
 
+startServer();

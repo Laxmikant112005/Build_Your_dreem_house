@@ -1,41 +1,67 @@
-/**
- * BuildMyHome - Redis Configuration
- * Redis client setup for caching and session management
- */
-
 const Redis = require('ioredis');
 const config = require('./index');
 const logger = require('../utils/logger');
 
 let redisClient = null;
+let connectionPromise = null;
+let redisEnabled = true;
 
 /**
- * Connect to Redis
+ * Check whether Redis is enabled.
  */
+const isRedisEnabled = () => {
+  const value = String(
+    process.env.REDIS_ENABLED ?? 'true'
+  ).toLowerCase();
+
+  return !['false', '0', 'no', 'off'].includes(value);
+};
+
 const connectRedis = async () => {
-  // Respect REDIS_ENABLED flag at top-level too
-  const enabled = (process.env.REDIS_ENABLED || 'true').toString().toLowerCase();
-  if (enabled === 'false' || enabled === '0' || enabled === 'no') {
+  if (!isRedisEnabled()) {
+    redisEnabled = false;
     logger.info('Redis: disabled via REDIS_ENABLED');
     return null;
   }
 
-  try {
-    // Support full REDIS_URL or host/port configuration
-    const redisOptions = {
-      password: config.redis.password || undefined,
-      lazyConnect: true,
-      // limit retries to avoid reconnect flood
-      maxRetriesPerRequest: 3,
-      // custom retry strategy: stop after ~5 attempts
-      retryStrategy: (times) => {
-        if (times > 5) return null; // stop retrying
-        return Math.min(times * 100, 2000);
-      },
-    };
+  redisEnabled = true;
 
+  // Already connected.
+  if (redisClient && redisClient.status === 'ready') {
+    return redisClient;
+  }
+
+  // Connection already in progress.
+  if (connectionPromise) {
+    return connectionPromise;
+  }
+
+  const redisOptions = {
+    lazyConnect: true,
+
+    password: config.redis.password || undefined,
+
+    maxRetriesPerRequest: 3,
+
+    retryStrategy: (times) => {
+      if (times > 5) {
+        logger.warn(
+          'Redis: maximum reconnect attempts reached'
+        );
+
+        return null;
+      }
+
+      return Math.min(times * 100, 2000);
+    },
+  };
+
+  try {
     if (process.env.REDIS_URL) {
-      redisClient = new Redis(process.env.REDIS_URL, redisOptions);
+      redisClient = new Redis(
+        process.env.REDIS_URL,
+        redisOptions
+      );
     } else {
       redisClient = new Redis({
         host: config.redis.host,
@@ -44,148 +70,340 @@ const connectRedis = async () => {
       });
     }
 
-    // Minimal event logging to avoid spam. Detailed events at debug level only.
-    redisClient.on('ready', () => logger.info('Redis: ready'));
-    redisClient.on('error', (err) => logger.debug('Redis: error', err && err.message));
-    // Do not log reconnect events repeatedly; let higher-level startup logic handle retries
+    /**
+     * Redis events.
+     */
+    redisClient.on('ready', () => {
+      logger.info('Redis: ready');
+    });
 
-    await redisClient.connect();
+    redisClient.on('connect', () => {
+      logger.debug('Redis: connecting');
+    });
+
+    redisClient.on('reconnecting', (delay) => {
+      logger.debug(
+        `Redis: reconnecting in ${delay}ms`
+      );
+    });
+
+    redisClient.on('error', (error) => {
+      logger.error('Redis connection error:', {
+        message: error.message,
+      });
+    });
+
+    connectionPromise = redisClient.connect();
+
+    await connectionPromise;
+
     if (redisClient.status !== 'ready') {
-      throw new Error(`Redis not ready (status=${redisClient.status})`);
+      throw new Error(
+        `Redis not ready (status=${redisClient.status})`
+      );
     }
+
     return redisClient;
   } catch (error) {
-    // Log at debug to avoid flooding; higher-level code will emit a single warning when appropriate
-    logger.debug('Redis: Failed to connect', error && error.message);
+    logger.error('Redis: Failed to connect', {
+      message: error.message,
+    });
+
+    if (redisClient) {
+      try {
+        redisClient.disconnect();
+      } catch (_) {
+        // Ignore cleanup errors.
+      }
+    }
+
+    redisClient = null;
+
+    throw error;
+  } finally {
+    connectionPromise = null;
+  }
+};
+
+/**
+ * Get Redis client.
+ */
+const getRedisClient = () => {
+  if (!redisEnabled) {
+    return null;
+  }
+
+  if (!redisClient || redisClient.status !== 'ready') {
+    throw new Error(
+      'Redis client is not connected'
+    );
+  }
+
+  return redisClient;
+};
+
+/**
+ * Check Redis availability without throwing.
+ */
+const isRedisReady = () => {
+  return (
+    redisEnabled &&
+    redisClient !== null &&
+    redisClient.status === 'ready'
+  );
+};
+
+/**
+ * Disconnect from Redis.
+ */
+const disconnectRedis = async () => {
+  if (!redisClient) {
+    return;
+  }
+
+  const client = redisClient;
+  redisClient = null;
+  connectionPromise = null;
+
+  try {
+    if (
+      client.status !== 'end' &&
+      client.status !== 'wait'
+    ) {
+      await client.quit();
+    }
+
+    logger.info('Redis: disconnected');
+  } catch (error) {
+    logger.error('Redis: disconnect error', {
+      message: error.message,
+    });
+
+    try {
+      client.disconnect();
+    } catch (_) {
+      // Ignore forced disconnect errors.
+    }
+
     throw error;
   }
 };
 
 /**
- * Get Redis client
+ * Validate cache key.
  */
-const getRedisClient = () => {
-  if (!redisClient) {
-    throw new Error('Redis client not initialized');
-  }
-  return redisClient;
-};
-
-/**
- * Disconnect from Redis
- */
-const disconnectRedis = async () => {
-  if (redisClient) {
-    await redisClient.quit();
-    logger.info('Redis: Disconnected');
+const validateKey = (key) => {
+  if (
+    typeof key !== 'string' ||
+    key.trim() === ''
+  ) {
+    throw new TypeError(
+      'Redis cache key must be a non-empty string'
+    );
   }
 };
 
 /**
- * Cache operations
+ * Validate TTL.
+ */
+const validateTTL = (seconds) => {
+  if (
+    !Number.isInteger(seconds) ||
+    seconds <= 0
+  ) {
+    throw new TypeError(
+      'Redis TTL must be a positive integer'
+    );
+  }
+};
+
+/**
+ * Cache operations.
  */
 const cache = {
   /**
-   * Set cache value
+   * Set cache value.
    */
   async set(key, value, ttlSeconds = 3600) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return false;
+      validateKey(key);
+      validateTTL(ttlSeconds);
+
+      if (!isRedisReady()) {
+        return false;
+      }
+
       const serialized = JSON.stringify(value);
-      // use generic SET with EX to be compatible across clients
-      await redisClient.set(key, serialized, 'EX', ttlSeconds);
+
+      await redisClient.set(
+        key,
+        serialized,
+        'EX',
+        ttlSeconds
+      );
+
       return true;
     } catch (error) {
-      logger.error('Redis cache set error:', error.message);
+      logger.error('Redis cache set error:', {
+        message: error.message,
+        key,
+      });
+
       return false;
     }
   },
 
   /**
-   * Get cache value
+   * Get cache value.
    */
   async get(key) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return null;
+      validateKey(key);
+
+      if (!isRedisReady()) {
+        return null;
+      }
+
       const value = await redisClient.get(key);
-      if (!value) return null;
-      return JSON.parse(value);
+
+      if (value === null) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(value);
+      } catch (parseError) {
+        logger.warn(
+          `Redis cache contains invalid JSON for key: ${key}`
+        );
+
+        return null;
+      }
     } catch (error) {
-      logger.error('Redis cache get error:', error.message);
+      logger.error('Redis cache get error:', {
+        message: error.message,
+        key,
+      });
+
       return null;
     }
   },
 
   /**
-   * Delete cache value
+   * Delete cache value.
    */
   async del(key) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return false;
+      validateKey(key);
+
+      if (!isRedisReady()) {
+        return false;
+      }
+
       await redisClient.del(key);
+
       return true;
     } catch (error) {
-      logger.error('Redis cache delete error:', error.message);
+      logger.error('Redis cache delete error:', {
+        message: error.message,
+        key,
+      });
+
       return false;
     }
   },
 
-  /**
-   * Delete cache by pattern
-   */
   async delByPattern(pattern) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return false;
-      // Use SCAN stream to avoid blocking Redis
-      const stream = redisClient.scanStream({ match: pattern, count: 100 });
-      const pipeline = redisClient.pipeline();
-      let keysFound = 0;
-      return new Promise((resolve) => {
-        stream.on('data', (keys) => {
-          if (keys.length) {
-            keysFound += keys.length;
-            keys.forEach((k) => pipeline.del(k));
-          }
-        });
-        stream.on('end', async () => {
-          if (keysFound > 0) {
-            await pipeline.exec();
-          }
-          resolve(true);
-        });
-        stream.on('error', (err) => {
-          logger.error('Redis scanStream error:', err.message);
-          resolve(false);
-        });
-      });
+      validateKey(pattern);
+
+      if (!isRedisReady()) {
+        return false;
+      }
+
+      let cursor = '0';
+      let deleted = 0;
+
+      do {
+        const [nextCursor, keys] =
+          await redisClient.scan(
+            cursor,
+            'MATCH',
+            pattern,
+            'COUNT',
+            100
+          );
+
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          await redisClient.del(...keys);
+          deleted += keys.length;
+        }
+      } while (cursor !== '0');
+
+      logger.debug(
+        `Redis: deleted ${deleted} keys matching ${pattern}`
+      );
+
+      return true;
     } catch (error) {
-      logger.error('Redis cache delete by pattern error:', error.message);
+      logger.error(
+        'Redis cache delete by pattern error:',
+        {
+          message: error.message,
+          pattern,
+        }
+      );
+
       return false;
     }
   },
 
   /**
-   * Increment counter
+   * Increment counter.
    */
   async incr(key) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return null;
+      validateKey(key);
+
+      if (!isRedisReady()) {
+        return null;
+      }
+
       return await redisClient.incr(key);
     } catch (error) {
-      logger.error('Redis increment error:', error.message);
+      logger.error('Redis increment error:', {
+        message: error.message,
+        key,
+      });
+
       return null;
     }
   },
 
   /**
-   * Set expiration
+   * Set expiration.
    */
   async expire(key, seconds) {
     try {
-      if (!redisClient || redisClient.status !== 'ready') return false;
-      return await redisClient.expire(key, seconds);
+      validateKey(key);
+      validateTTL(seconds);
+
+      if (!isRedisReady()) {
+        return false;
+      }
+
+      return await redisClient.expire(
+        key,
+        seconds
+      );
     } catch (error) {
-      logger.error('Redis expire error:', error.message);
+      logger.error('Redis expire error:', {
+        message: error.message,
+        key,
+      });
+
       return false;
     }
   },
@@ -195,6 +413,6 @@ module.exports = {
   connectRedis,
   disconnectRedis,
   getRedisClient,
+  isRedisReady,
   cache,
 };
-
