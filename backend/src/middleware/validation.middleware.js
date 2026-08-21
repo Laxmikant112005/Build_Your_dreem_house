@@ -1,54 +1,111 @@
-/**
- * BuildMyHome - Validation Middleware
- * Request validation using express-validator
-*/
+const {
+  validationResult,
+} = require('express-validator');
 
-const { validationResult } = require('express-validator');
 const ApiError = require('../utils/ApiError');
+const {
+  validateJoi,
+} = require('./joi.middleware');
 
-/**
- * Validation middleware
- */
+
 const validate = (req, res, next) => {
   const errors = validationResult(req);
+
   if (!errors.isEmpty()) {
-    const formattedErrors = errors.array().map((err) => ({
-      field: err.path || err.param,
-      message: err.msg,
-      type: err.type,
+    const formattedErrors = errors.array().map((error) => ({
+      field:
+        error.path ||
+        error.param ||
+        'unknown',
+      message:
+        error.msg ||
+        error.message ||
+        'Invalid value',
+      type:
+        error.type ||
+        'validation',
     }));
-    const statusCode = formattedErrors.some((detail) => detail.message?.toLowerCase().includes('required') || detail.message?.toLowerCase().includes('must not be empty')) ? 400 : 422;
-    return next(new ApiError(statusCode, 'Validation failed', formattedErrors));
+    const hasRequiredError =
+      formattedErrors.some((detail) => {
+        const message =
+          String(detail.message).toLowerCase();
+
+        return (
+          message.includes('required') ||
+          message.includes('must not be empty') ||
+          message.includes('is required')
+        );
+      });
+
+    const statusCode =
+      hasRequiredError ? 400 : 422;
+
+    return next(
+      new ApiError(
+        statusCode,
+        'Validation failed',
+        formattedErrors
+      )
+    );
   }
-  next();
+
+  return next();
 };
+
 
 const validateRequest = (validators = []) => {
-  const list = Array.isArray(validators) ? validators : (validators ? [validators] : []);
-  return [...list, validate];
+  const list = Array.isArray(validators)
+    ? validators
+    : validators
+      ? [validators]
+      : [];
+
+  return [
+    ...list.filter(
+      (middleware) =>
+        typeof middleware === 'function'
+    ),
+    validate,
+  ];
 };
 
+const validateJoiRequest = (
+  schema,
+  source = 'body',
+  statusCode = 422
+) => {
+  // No schema supplied.
+  if (!schema) {
+    return (req, res, next) => next();
+  }
 
-const { validateJoi } = require('./joi.middleware');
+  // Joi schema.
+  if (
+    typeof schema.validate === 'function'
+  ) {
+    return validateJoi(
+      schema,
+      source,
+      statusCode
+    );
+  }
 
-// Backwards compatible: if a Joi schema is passed, validate it.
-// If an array of express-validator middlewares is passed, just use validateRequest.
-const validateJoiRequest = (schema, source = 'body') => {
-  // If an express-validator style middleware array/object is passed, ignore.
-  if (!schema) return (req, res, next) => next();
-
-  // Joi schema has .validate
-  if (typeof schema.validate === 'function') return validateJoi(schema, source);
-
-  // If somebody accidentally passes Joi via validateRequest or vice versa,
-  // fall back safely.
-  if (typeof schema === 'function') return schema;
-
-  return (req, res, next) => next();
+  
+  if (typeof schema === 'function') {
+    return schema;
+  }
+  return (req, res, next) => {
+    next(
+      new ApiError(
+        500,
+        'Invalid validation middleware configuration'
+      )
+    );
+  };
 };
 
-
-
-
-module.exports = { validate, validateRequest, validateJoiRequest };
-
+module.exports = {
+  validate,
+  validateRequest,
+  validateJoiRequest,
+};
