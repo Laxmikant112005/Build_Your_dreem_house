@@ -1,166 +1,197 @@
-/**
- * BuildMyHome - Authentication Middleware
- */
-
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const User = require('../modules/user/user.model');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 
-/**
- * Verify JWT token
- */
+const ROLE = {
+  USER: 'user',
+  ENGINEER: 'engineer',
+  ADMIN: 'admin',
+};
+
+const extractBearerToken = (req) => {
+  const header = req.headers.authorization;
+
+  if (!header) return null;
+
+  const [scheme, token] = header.trim().split(/\s+/);
+
+  return scheme?.toLowerCase() === 'bearer' && token
+    ? token.trim()
+    : null;
+};
+
 const verifyToken = async (token) => {
+  if (!token) throw new ApiError(401, 'Invalid token');
+
   let decoded;
+
   try {
     decoded = jwt.verify(token, config.jwt.secret);
   } catch (error) {
-    console.error('[JWT-FAIL] verify-catch', error && error.name);
-    if (error && error.name === 'TokenExpiredError') {
+    if (error?.name === 'TokenExpiredError') {
       throw new ApiError(401, 'Token expired');
     }
+
     throw new ApiError(401, 'Invalid token');
   }
 
-  // tests + service sign JWT with { id: userId }.
-  // Some legacy callers may pass tokens with a top-level `userId`.
-  const userId = decoded && (decoded.id || decoded.userId);
+  const userId = decoded?.id || decoded?.userId;
+
   if (!userId) {
-    console.error('[JWT-FAIL] no-id');
     throw new ApiError(401, 'Invalid token');
   }
 
-  const user = await User.findById(userId).select('-password -refreshToken');
-  if (!user) {
-    throw new ApiError(401, 'Invalid token');
-  }
+  try {
+    const user = await User.findById(userId).select(
+      '-password -refreshToken'
+    );
 
-  if (user.isActive === false) {
-    throw new ApiError(401, 'Invalid token');
-  }
+    if (!user) throw new ApiError(401, 'Invalid token');
 
-  return { user, decoded };
+    if (user.isActive === false) {
+      throw new ApiError(401, 'Account is inactive');
+    }
+
+    return { user, decoded };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+
+    logger.error(`Failed to load user: ${error.message}`);
+    throw new ApiError(401, 'Authentication failed');
+  }
 };
 
-/**
- * Authentication middleware - requires valid token
- */
 const authenticate = async (req, res, next) => {
   try {
-    // Get token from header
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new ApiError(401, 'Access denied. No token provided.');
+    const token = extractBearerToken(req);
+
+    if (!token) {
+      throw new ApiError(401, 'Access denied. No valid token provided.');
     }
 
-    const token = authHeader.split(' ')[1]?.trim();
-    if (!token) throw new ApiError(401, 'Access denied. No token provided.');
-
-    // Verify token
     const { user } = await verifyToken(token);
-    
-    // Add user to request object
+
     req.user = user;
-    req.userId = user._id;
-    
+    req.userId = user._id.toString();
+
     next();
   } catch (error) {
-    if (error instanceof ApiError) {
-      next(error);
-    } else {
-      logger.error('Authentication error:', error.message);
-      next(new ApiError(401, 'Authentication failed'));
-    }
+    next(
+      error instanceof ApiError
+        ? error
+        : new ApiError(401, 'Authentication failed')
+    );
   }
 };
 
-/**
- * Optional authentication - attaches user if token provided
- */
 const optionalAuth = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const { user } = await verifyToken(token);
-      req.user = user;
-      req.userId = user._id;
-    }
-    
-    next();
-  } catch (error) {
-    // Continue without user if token is invalid
-    next();
+    const token = extractBearerToken(req);
+
+    if (!token) return next();
+
+    const { user } = await verifyToken(token);
+
+    req.user = user;
+    req.userId = user._id.toString();
+  } catch {
+    req.user = undefined;
+    req.userId = undefined;
   }
+
+  next();
 };
 
-/**
- * Role-based authorization
- */
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
       return next(new ApiError(401, 'Authentication required'));
     }
 
-    if (!roles.includes(req.user.role)) {
-      return next(new ApiError(403, 'Access denied. Insufficient permissions.'));
+    if (!roles.length) {
+      return next(new ApiError(500, 'Authorization roles are not configured'));
+    }
+
+    const userRole = String(req.user.role || '').toLowerCase();
+    const allowedRoles = roles.map((role) =>
+      String(role).toLowerCase()
+    );
+
+    if (!allowedRoles.includes(userRole)) {
+      return next(
+        new ApiError(403, 'Access denied. Insufficient permissions.')
+      );
     }
 
     next();
   };
 };
 
-/**
- * Check if user is verified engineer
- */
-const requireVerifiedEngineer = async (req, res, next) => {
+const requireVerifiedEngineer = (req, res, next) => {
   try {
     if (!req.user) {
       throw new ApiError(401, 'Authentication required');
     }
 
-    if (req.user.role !== 'engineer') {
+    if (String(req.user.role).toLowerCase() !== ROLE.ENGINEER) {
       throw new ApiError(403, 'Access denied. Engineer role required.');
     }
 
-    if (!req.user.engineerProfile?.isVerified) {
-      throw new ApiError(403, 'Your engineer profile is not verified yet.');
+    if (!req.user.engineerProfile) {
+      throw new ApiError(403, 'Engineer profile not found.');
+    }
+
+    if (req.user.engineerProfile.isVerified !== true) {
+      throw new ApiError(
+        403,
+        'Your engineer profile is not verified yet.'
+      );
     }
 
     next();
   } catch (error) {
-    next(error);
+    next(
+      error instanceof ApiError
+        ? error
+        : new ApiError(403, 'Engineer authorization failed')
+    );
   }
 };
 
-/**
- * Check if user owns resource or is admin
- */
 const checkOwnership = (getOwnerIdFromReq) => {
   return (req, res, next) => {
-    const ownerId = getOwnerIdFromReq(req);
-    const userId = req.user?._id?.toString();
-    const userRole = req.user?.role;
+    try {
+      if (!req.user) {
+        return next(new ApiError(401, 'Authentication required'));
+      }
 
-    // Allow if user is admin
-    if (userRole === 'admin') {
-      return next();
+      const ownerId = getOwnerIdFromReq(req);
+      const userId = req.user._id?.toString();
+      const role = String(req.user.role || '').toLowerCase();
+
+      if (role === ROLE.ADMIN) return next();
+
+      if (!ownerId || !userId || ownerId.toString() !== userId) {
+        return next(
+          new ApiError(
+            403,
+            'Access denied. You can only modify your own resources.'
+          )
+        );
+      }
+
+      next();
+    } catch (error) {
+      logger.error(`Ownership error: ${error.message}`);
+      next(new ApiError(403, 'Unable to verify resource ownership.'));
     }
-
-    // Allow if user owns the resource
-    if (ownerId && userId && ownerId.toString() === userId) {
-      return next();
-    }
-
-    next(new ApiError(403, 'Access denied. You can only modify your own resources.'));
   };
 };
 
 module.exports = {
+  ROLE,
   authenticate,
   optionalAuth,
   authorize,
@@ -168,4 +199,3 @@ module.exports = {
   checkOwnership,
   verifyToken,
 };
-

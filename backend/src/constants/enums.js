@@ -1,13 +1,15 @@
 /**
  * BuildMyHome / Planova - Enumerations
  * ConTech domain enums for Blueprint Marketplace, GeoSpatial plots,
- * Appointments, and AI metadata.
+ * Appointments, legacy modules, marketplace, notifications, chat,
+ * and AI metadata.
  */
 
 module.exports = {
   // ===================================================================
   // USER / ENGINEER
   // ===================================================================
+
   USER_ROLES: ['user', 'engineer', 'admin'],
 
   VERIFICATION_STATUS: {
@@ -17,8 +19,9 @@ module.exports = {
   },
 
   // ===================================================================
-  // BLUEPRINT (replaces legacy Design)
+  // BLUEPRINT
   // ===================================================================
+
   BLUEPRINT_STATUS: {
     DRAFT: 'draft',
     PENDING: 'pending',
@@ -51,13 +54,43 @@ module.exports = {
     'fusion',
   ],
 
-  CONSTRUCTION_TYPES: ['RCC', 'Steel', 'Wood', 'Mixed', 'Prefab', 'ShippingContainer'],
+  CONSTRUCTION_TYPES: [
+    'rcc',
+    'steel',
+    'wood',
+    'mixed',
+    'prefab',
+    'shipping_container',
+  ],
 
-  VASTU_ORIENTATION: ['north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'],
+  VASTU_ORIENTATION: [
+    'north',
+    'south',
+    'east',
+    'west',
+    'northeast',
+    'northwest',
+    'southeast',
+    'southwest',
+  ],
 
-  KITCHEN_TYPE: ['open', 'closed', 'modular', 'island', 'l-shaped', 'u-shaped', 'galley'],
+  KITCHEN_TYPE: [
+    'open',
+    'closed',
+    'modular',
+    'island',
+    'l_shaped',
+    'u_shaped',
+    'galley',
+  ],
 
-  PARKING_TYPE: ['covered', 'open', 'basement', 'carport', 'none'],
+  PARKING_TYPE: [
+    'covered',
+    'open',
+    'basement',
+    'carport',
+    'none',
+  ],
 
   SUSTAINABILITY_FEATURES: [
     'solar_panels',
@@ -77,8 +110,9 @@ module.exports = {
   ],
 
   // ===================================================================
-  // PLOT (replaces legacy Field)
+  // PLOT
   // ===================================================================
+
   PLOT_STATUS: {
     DRAFT: 'draft',
     ACTIVE: 'active',
@@ -113,11 +147,19 @@ module.exports = {
     'filled',
   ],
 
-  ROAD_ACCESS: ['front', 'rear', 'side', 'corner', 'cul_de_sac', 'no_access'],
+  ROAD_ACCESS: [
+    'front',
+    'rear',
+    'side',
+    'corner',
+    'cul_de_sac',
+    'no_access',
+  ],
 
   // ===================================================================
-  // APPOINTMENT (replaces legacy Booking)
+  // APPOINTMENT
   // ===================================================================
+
   APPOINTMENT_STATUS: {
     PENDING: 'pending',
     ACCEPTED: 'accepted',
@@ -146,12 +188,13 @@ module.exports = {
   },
 
   // ===================================================================
-  // BOOKING (legacy, kept for backward compatibility)
+  // BOOKING - LEGACY
   // ===================================================================
+
   BOOKING_STATUS: {
     PENDING: 'pending',
     CONFIRMED: 'confirmed',
-    IN_PROGRESS: 'in-progress',
+    IN_PROGRESS: 'in_progress',
     COMPLETED: 'completed',
     CANCELLED: 'cancelled',
     REJECTED: 'rejected',
@@ -166,13 +209,14 @@ module.exports = {
 
   MEETING_TYPE: {
     VIDEO: 'video',
-    IN_PERSON: 'in-person',
+    IN_PERSON: 'in_person',
     PHONE: 'phone',
   },
 
   // ===================================================================
-  // DESIGN (legacy, kept for backward compatibility)
+  // DESIGN - LEGACY
   // ===================================================================
+
   DESIGN_STATUS: {
     DRAFT: 'draft',
     PENDING: 'pending',
@@ -181,8 +225,9 @@ module.exports = {
   },
 
   // ===================================================================
-  // FIELD (legacy, kept for backward compatibility)
+  // FIELD - LEGACY
   // ===================================================================
+
   FIELD_STATUS: {
     DRAFT: 'draft',
     ACTIVE: 'active',
@@ -194,6 +239,7 @@ module.exports = {
   // ===================================================================
   // REVIEW
   // ===================================================================
+
   REVIEW_RATINGS: {
     MIN: 1,
     MAX: 5,
@@ -209,16 +255,21 @@ module.exports = {
   // ===================================================================
   // NOTIFICATION
   // ===================================================================
+
   NOTIFICATION_TYPES: {
     BOOKING: 'booking',
+    APPOINTMENT: 'appointment',
     MESSAGE: 'message',
     REVIEW: 'review',
     SYSTEM: 'system',
     DESIGN: 'design',
+    BLUEPRINT: 'blueprint',
     PROMOTION: 'promotion',
-    APPOINTMENT: 'appointment',
     PLOT: 'plot',
     COLLECTION: 'collection',
+    PROJECT: 'project',
+    PAYMENT: 'payment',
+    ORDER: 'order',
   },
 
   NOTIFICATION_PRIORITY: {
@@ -231,9 +282,15 @@ module.exports = {
   NOTIFICATION_SOURCES: {
     SYSTEM: 'system',
     BOOKING: 'booking',
+    APPOINTMENT: 'appointment',
     CHAT: 'chat',
     REVIEW: 'review',
     DESIGN: 'design',
+    BLUEPRINT: 'blueprint',
+    PLOT: 'plot',
+    PROJECT: 'project',
+    PAYMENT: 'payment',
+    ORDER: 'order',
     ADMIN: 'admin',
     PROMOTION: 'promotion',
   },
@@ -241,10 +298,12 @@ module.exports = {
   // ===================================================================
   // CHAT
   // ===================================================================
+
   CHAT_TYPES: {
     DIRECT: 'direct',
     GROUP: 'group',
     BOOKING: 'booking',
+    APPOINTMENT: 'appointment',
     PROJECT: 'project',
   },
 
@@ -259,18 +318,20 @@ module.exports = {
   // ===================================================================
   // FILE CATEGORIES
   // ===================================================================
+
   FILE_CATEGORIES: {
     IMAGE: 'image',
-    FLOOR_PLAN: 'floorPlan',
-    CAD_FILE: 'cadFile',
-    MODEL_3D: 'model3d',
+    FLOOR_PLAN: 'floor_plan',
+    CAD_FILE: 'cad_file',
+    MODEL_3D: 'model_3d',
     DOCUMENT: 'document',
     BLUEPRINT: 'blueprint',
   },
 
   // ===================================================================
-  // MARKETPLACE (Materials, Orders)
+  // MARKETPLACE
   // ===================================================================
+
   MATERIAL_CATEGORIES: [
     'cement',
     'steel',
@@ -298,14 +359,40 @@ module.exports = {
     OUT_OF_STOCK: 'out_of_stock',
   },
 
-  PAYMENT_GATEWAYS: ['stripe', 'razorpay'],
-  PAYMENT_STATUS: ['pending', 'paid', 'failed', 'refunded'],
-  DELIVERY_STATUS: ['pending', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'],
-  ORDER_STATUS: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
+  PAYMENT_GATEWAYS: [
+    'stripe',
+    'razorpay',
+  ],
+
+  PAYMENT_STATUS: [
+    'pending',
+    'paid',
+    'failed',
+    'refunded',
+  ],
+
+  DELIVERY_STATUS: [
+    'pending',
+    'processing',
+    'shipped',
+    'out_for_delivery',
+    'delivered',
+    'cancelled',
+  ],
+
+  ORDER_STATUS: [
+    'pending',
+    'confirmed',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled',
+  ],
 
   // ===================================================================
-  // COMPARISON & COLLECTIONS
+  // COLLECTIONS / COMPARISON
   // ===================================================================
+
   COLLECTION_VISIBILITY: {
     PRIVATE: 'private',
     PUBLIC: 'public',
@@ -315,8 +402,9 @@ module.exports = {
   COMPARISON_MAX_ITEMS: 4,
 
   // ===================================================================
-  // AI & ML
+  // AI / ML
   // ===================================================================
+
   AI_PROVIDERS: {
     OPENAI: 'openai',
     PINECONE: 'pinecone',
@@ -327,4 +415,3 @@ module.exports = {
     CUSTOM: 'custom',
   },
 };
-
