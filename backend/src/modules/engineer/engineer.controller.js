@@ -1,15 +1,14 @@
 /**
- * BuildMyHome - Engineer Controller
+ * Planova - Engineer Controller
  * Request handlers for engineer endpoints
  */
 
 const engineerService = require('./engineer.service');
 const ApiResponse = require('../../utils/ApiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
-const logger = require('../../utils/logger');
 
 /**
- * Get all engineers with filtering and pagination
+ * Get all engineers
  */
 const getEngineers = asyncHandler(async (req, res) => {
   const {
@@ -23,170 +22,267 @@ const getEngineers = asyncHandler(async (req, res) => {
     sortOrder = 'desc',
   } = req.query;
 
-  const filters = {
-    city,
-    style,
-    minRating: minRating ? parseFloat(minRating) : undefined,
-    minExperience: minExperience ? parseInt(minExperience) : undefined,
-  };
+  const result = await engineerService.getEngineers(
+    {
+      city,
+      style,
+      minRating: minRating ? Number(minRating) : undefined,
+      minExperience: minExperience ? Number(minExperience) : undefined,
+    },
+    {
+      page: Math.max(1, Number(page)),
+      limit: Math.min(100, Math.max(1, Number(limit))),
+      sortBy,
+      sortOrder,
+    }
+  );
 
-  const result = await engineerService.getEngineers(filters, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-    sortBy,
-    sortOrder,
-  });
-
-  ApiResponse.ok(res, 'Engineers retrieved successfully', result);
+  return ApiResponse.ok(
+    res,
+    'Engineers retrieved successfully',
+    result
+  );
 });
 
 /**
  * Get engineer by ID
  */
 const getEngineerById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const engineer = await engineerService.getEngineerById(id);
-  
+  const engineer = await engineerService.getEngineerById(req.params.id);
+
   if (!engineer) {
     return ApiResponse.notFound(res, 'Engineer not found');
   }
 
-  ApiResponse.ok(res, 'Engineer retrieved successfully', engineer);
+  return ApiResponse.ok(
+    res,
+    'Engineer retrieved successfully',
+    engineer
+  );
 });
 
 /**
  * Get featured engineers
  */
 const getFeaturedEngineers = asyncHandler(async (req, res) => {
-  const { limit = 10 } = req.query;
-  const engineers = await engineerService.getFeaturedEngineers(parseInt(limit));
-  ApiResponse.ok(res, 'Featured engineers retrieved successfully', engineers);
+  const limit = Math.min(
+    100,
+    Math.max(1, Number(req.query.limit) || 10)
+  );
+
+  const engineers =
+    await engineerService.getFeaturedEngineers(limit);
+
+  return ApiResponse.ok(
+    res,
+    'Featured engineers retrieved successfully',
+    engineers
+  );
 });
 
 /**
- * Get designs by engineer
+ * Get engineer designs
  */
 const getEngineerDesigns = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { page = 1, limit = 20, status = 'approved' } = req.query;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, Number(req.query.limit) || 20)
+  );
 
-  const result = await engineerService.getEngineerDesigns(id, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-    status,
-  });
+  const result = await engineerService.getEngineerDesigns(
+    req.params.id,
+    {
+      page,
+      limit,
+      status: req.query.status || 'approved',
+    }
+  );
 
-  ApiResponse.ok(res, 'Engineer designs retrieved successfully', result);
+  return ApiResponse.ok(
+    res,
+    'Engineer designs retrieved successfully',
+    result
+  );
 });
 
 /**
- * Get reviews for engineer
+ * Get engineer reviews
  */
 const getEngineerReviews = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { page = 1, limit = 20 } = req.query;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, Number(req.query.limit) || 20)
+  );
 
-  const result = await engineerService.getEngineerReviews(id, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-  });
+  const result = await engineerService.getEngineerReviews(
+    req.params.id,
+    {
+      page,
+      limit,
+    }
+  );
 
-  ApiResponse.ok(res, 'Engineer reviews retrieved successfully', result);
+  return ApiResponse.ok(
+    res,
+    'Engineer reviews retrieved successfully',
+    result
+  );
 });
 
 /**
- * Update engineer profile
+ * Update authenticated engineer profile
  */
 const updateEngineerProfile = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  const updateData = req.body;
+  const engineer = await engineerService.updateProfile(
+    req.userId,
+    req.body
+  );
 
-  const engineer = await engineerService.updateProfile(userId, updateData);
-  ApiResponse.ok(res, 'Profile updated successfully', engineer);
+  return ApiResponse.ok(
+    res,
+    'Profile updated successfully',
+    engineer
+  );
 });
 
 /**
- * Update engineer availability
+ * Update authenticated engineer availability
  */
 const updateAvailability = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  const { availability } = req.body;
+  const engineer = await engineerService.updateAvailability(
+    req.userId,
+    req.body.availability
+  );
 
-  const engineer = await engineerService.updateAvailability(userId, availability);
-  ApiResponse.ok(res, 'Availability updated successfully', engineer);
+  return ApiResponse.ok(
+    res,
+    'Availability updated successfully',
+    engineer
+  );
 });
 
 /**
  * Add portfolio item
  */
 const addPortfolioItem = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  const portfolioItem = req.body;
+  const engineer = await engineerService.addPortfolioItem(
+    req.userId,
+    req.body
+  );
 
-  const engineer = await engineerService.addPortfolioItem(userId, portfolioItem);
-  ApiResponse.created(res, 'Portfolio item added successfully', engineer);
+  return ApiResponse.created(
+    res,
+    'Portfolio item added successfully',
+    engineer
+  );
 });
 
 /**
  * Remove portfolio item
  */
 const removePortfolioItem = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  const { portfolioId } = req.params;
+  const engineer = await engineerService.removePortfolioItem(
+    req.userId,
+    req.params.portfolioId
+  );
 
-  const engineer = await engineerService.removePortfolioItem(userId, portfolioId);
-  ApiResponse.ok(res, 'Portfolio item removed successfully', engineer);
+  return ApiResponse.ok(
+    res,
+    'Portfolio item removed successfully',
+    engineer
+  );
 });
 
 /**
- * Get the authenticated engineer's dashboard aggregation
+ * Get authenticated engineer dashboard
  */
 const getEngineerDashboard = asyncHandler(async (req, res) => {
-  const dashboard = await engineerService.getEngineerDashboard(req.userId);
-  ApiResponse.ok(res, 'Engineer dashboard retrieved successfully', dashboard);
+  const dashboard =
+    await engineerService.getEngineerDashboard(req.userId);
+
+  return ApiResponse.ok(
+    res,
+    'Engineer dashboard retrieved successfully',
+    dashboard
+  );
 });
 
 /**
- * Submit/update the authenticated engineer's verification application
+ * Submit engineer verification
  */
 const submitVerification = asyncHandler(async (req, res) => {
-  const result = await engineerService.submitVerification(req.userId, req.body);
-  ApiResponse.ok(res, 'Verification application submitted successfully', result);
+  const result =
+    await engineerService.submitVerification(
+      req.userId,
+      req.body
+    );
+
+  return ApiResponse.ok(
+    res,
+    'Verification application submitted successfully',
+    result
+  );
 });
 
 /**
- * Get the authenticated engineer's verification status
+ * Get authenticated engineer verification status
  */
 const getVerificationStatus = asyncHandler(async (req, res) => {
-  const result = await engineerService.getVerificationStatus(req.userId);
-  ApiResponse.ok(res, 'Verification status retrieved successfully', result);
+  const result =
+    await engineerService.getVerificationStatus(req.userId);
+
+  return ApiResponse.ok(
+    res,
+    'Verification status retrieved successfully',
+    result
+  );
 });
 
 /**
  * Get engineer statistics
  */
 const getEngineerStats = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const stats = await engineerService.getEngineerStats(id);
-  ApiResponse.ok(res, 'Engineer statistics retrieved successfully', stats);
+  const stats =
+    await engineerService.getEngineerStats(req.params.id);
+
+  return ApiResponse.ok(
+    res,
+    'Engineer statistics retrieved successfully',
+    stats
+  );
 });
 
 /**
- * Search engineers by name or specialization
+ * Search engineers
  */
 const searchEngineers = asyncHandler(async (req, res) => {
-  const { q, page = 1, limit = 20 } = req.query;
+  const q = String(req.query.q || '').trim();
 
-  if (!q || q.length < 2) {
-    return ApiResponse.badRequest(res, 'Search query must be at least 2 characters');
+  if (q.length < 2) {
+    return ApiResponse.badRequest(
+      res,
+      'Search query must be at least 2 characters'
+    );
   }
 
-  const result = await engineerService.searchEngineers(q, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-  });
+  const result = await engineerService.searchEngineers(
+    q,
+    {
+      page: Math.max(1, Number(req.query.page) || 1),
+      limit: Math.min(
+        100,
+        Math.max(1, Number(req.query.limit) || 20)
+      ),
+    }
+  );
 
-  ApiResponse.ok(res, 'Search results retrieved successfully', result);
+  return ApiResponse.ok(
+    res,
+    'Search results retrieved successfully',
+    result
+  );
 });
 
 module.exports = {
@@ -205,4 +301,3 @@ module.exports = {
   getEngineerStats,
   searchEngineers,
 };
-

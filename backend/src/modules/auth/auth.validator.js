@@ -11,7 +11,7 @@ module.exports = {
   }).unknown(false),
 
   login: Joi.object({
-    email: Joi.string().email().required(),
+    email: Joi.string().trim().email().required(),
     password: Joi.string().required(),
   }),
 
@@ -31,5 +31,9 @@ module.exports = {
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),
     newPassword: Joi.string().min(6).required(),
+  }),
+
+  verifyEmail: Joi.object({
+    token: Joi.string().trim().required(),
   }),
 };
