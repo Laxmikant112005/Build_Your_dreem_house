@@ -1,6 +1,6 @@
-/**
- * Planova - User Roles
- */
+ /**
+  * Planova - User Roles
+  */
 
 const ROLE = Object.freeze({
   USER: 'user',

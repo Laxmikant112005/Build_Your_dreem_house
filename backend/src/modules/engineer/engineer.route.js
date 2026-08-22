@@ -3,9 +3,11 @@
  */
 
 const express = require('express');
+
 const router = express.Router();
 
 const engineerController = require('./engineer.controller');
+
 const {
   authenticate,
   authorize,
@@ -13,10 +15,30 @@ const {
 } = require('../../middleware/auth.middleware');
 
 const { ROLE } = require('../../constants/roles');
-const engineerValidator = require('./engineer.validator');
-const { validateJoi } = require('../../middleware/joi.middleware');
 
-// Protected /me routes MUST come before dynamic /:id routes
+const engineerValidator = require('./engineer.validator');
+
+const {
+  validateJoi,
+} = require('../../middleware/joi.middleware');
+
+/*
+ * ============================================================
+ * PROTECTED /ME ROUTES
+ * ============================================================
+ *
+ * These routes MUST remain before /:id routes.
+ */
+
+/**
+ * Engineer dashboard
+ *
+ * Requires:
+ * - valid JWT
+ * - engineer role
+ *
+ * Verification is intentionally NOT required here.
+ */
 router.get(
   '/me/dashboard',
   authenticate,
@@ -24,6 +46,9 @@ router.get(
   engineerController.getEngineerDashboard
 );
 
+/**
+ * Engineer verification status
+ */
 router.get(
   '/me/verification',
   authenticate,
@@ -31,40 +56,77 @@ router.get(
   engineerController.getVerificationStatus
 );
 
+/**
+ * Submit engineer verification
+ */
 router.post(
   '/me/verification/submit',
   authenticate,
   authorize(ROLE.ENGINEER),
-  validateJoi(engineerValidator.submitVerification, 'body'),
+  validateJoi(
+    engineerValidator.submitVerification,
+    'body'
+  ),
   engineerController.submitVerification
 );
 
-// Engineer profile
+/*
+ * ============================================================
+ * ENGINEER PROFILE
+ * ============================================================
+ */
+
+/**
+ * Update engineer profile
+ */
 router.put(
   '/profile',
   authenticate,
   authorize(ROLE.ENGINEER),
-  validateJoi(engineerValidator.updateProfile, 'body'),
+  validateJoi(
+    engineerValidator.updateProfile,
+    'body'
+  ),
   engineerController.updateEngineerProfile
 );
 
+/**
+ * Update engineer availability
+ */
 router.put(
   '/availability',
   authenticate,
   authorize(ROLE.ENGINEER),
-  validateJoi(engineerValidator.updateAvailability, 'body'),
+  validateJoi(
+    engineerValidator.updateAvailability,
+    'body'
+  ),
   engineerController.updateAvailability
 );
 
-// Portfolio
+/*
+ * ============================================================
+ * PORTFOLIO
+ * ============================================================
+ */
+
+/**
+ * Add portfolio item
+ */
 router.post(
   '/portfolio',
   authenticate,
   authorize(ROLE.ENGINEER),
-  validateJoi(engineerValidator.addPortfolio, 'body'),
+  validateJoi(
+    engineerValidator.addPortfolio,
+    'body'
+  ),
   engineerController.addPortfolioItem
 );
 
+/**
+ * Remove portfolio item
+ */
 router.delete(
   '/portfolio/:portfolioId',
   authenticate,
@@ -72,10 +134,34 @@ router.delete(
   engineerController.removePortfolioItem
 );
 
-// Public routes
-router.get('/', engineerController.getEngineers);
-router.get('/featured', engineerController.getFeaturedEngineers);
-router.get('/search', engineerController.searchEngineers);
+/*
+ * ============================================================
+ * PUBLIC ENGINEER ROUTES
+ * ============================================================
+ */
+
+router.get(
+  '/',
+  engineerController.getEngineers
+);
+
+router.get(
+  '/featured',
+  engineerController.getFeaturedEngineers
+);
+
+router.get(
+  '/search',
+  engineerController.searchEngineers
+);
+
+/*
+ * ============================================================
+ * DYNAMIC ENGINEER ROUTES
+ * ============================================================
+ *
+ * Keep these AFTER /me routes.
+ */
 
 router.get(
   '/:id',
