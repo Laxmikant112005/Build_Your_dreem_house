@@ -464,6 +464,11 @@ function App() {
           />
 
           <Route
+            path="blueprints"
+            element={<MyDesigns />}
+          />
+
+          <Route
             path="upload"
             element={<UploadDesign />}
           />

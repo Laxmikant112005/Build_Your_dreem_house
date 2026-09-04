@@ -70,6 +70,14 @@ router.post(
   engineerController.submitVerification
 );
 
+router.post(
+  '/verify',
+  authenticate,
+  authorize(ROLE.ENGINEER),
+  validateJoi(engineerValidator.submitVerification, 'body'),
+  engineerController.submitVerification
+);
+
 /*
  * ============================================================
  * ENGINEER PROFILE
@@ -88,6 +96,13 @@ router.put(
     'body'
   ),
   engineerController.updateEngineerProfile
+);
+
+router.get(
+  '/profile',
+  authenticate,
+  authorize(ROLE.ENGINEER),
+  engineerController.getEngineerProfile
 );
 
 /**

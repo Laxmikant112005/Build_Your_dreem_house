@@ -52,13 +52,18 @@ export const engineerService = {
     return res.data;
   },
 
+  getProfile: async () => {
+    const res = await axios.get('engineer/profile');
+    return res.data;
+  },
+
   getVerificationStatus: async () => {
     const res = await axios.get('engineers/me/verification');
     return res.data;
   },
 
   submitVerification: async (data) => {
-    const res = await axios.post('engineers/me/verification/submit', data);
+    const res = await axios.post('engineer/verify', data);
     return res.data;
   },
 

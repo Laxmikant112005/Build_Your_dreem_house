@@ -61,19 +61,21 @@ const EngineerProfile = () => {
     (async () => {
       try {
         // First try self profile from dashboard or current user
-        const me = user?.engineerProfile || {};
+        const profileRes = await engineerService.getProfile().catch(() => null);
+        const loaded = profileRes?.data || user || {};
+        const me = loaded.engineerProfile || {};
         setProfile({
-          firstName: user?.firstName || '',
-          lastName: user?.lastName || '',
-          avatar: user?.avatar || null,
-          phone: user?.phone || '',
+          firstName: loaded.firstName || '',
+          lastName: loaded.lastName || '',
+          avatar: loaded.avatar || null,
+          phone: loaded.phone || '',
           engineerProfile: me,
         });
         const dashRes = await engineerService.getDashboard().catch(() => null);
         if (active && dashRes?.data?.profile) {
           setProfile((prev) => ({ ...prev, completion: dashRes.data.profile.completion, completionLabel: dashRes.data.profile.completionLabel }));
         }
-      } catch (e) {
+      } catch {
         if (active) setError('Failed to load profile');
       } finally {
         if (active) setLoading(false);
@@ -224,10 +226,10 @@ const EngineerProfile = () => {
         <>
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-16">
-            {stats.map(({ label, value, icon: Icon, color }, i) => (
+            {stats.map(({ label, value, icon, color }, i) => (
               <div key={i} className="group p-8 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50/50 to-transparent">
                 <div className="w-12 h-12 bg-white/30 rounded-2xl flex items-center justify-center mb-3">
-                  <Icon className={cn('w-7 h-7', color)} />
+                  {React.createElement(icon, { className: cn('w-7 h-7', color) })}
                 </div>
                 <p className="text-3xl font-extrabold text-navy mb-1">{value}</p>
                 <p className="text-slate-500 uppercase text-xs font-bold tracking-wide">{label}</p>
@@ -316,9 +318,9 @@ const EngineerProfile = () => {
   );
 };
 
-const InfoRow = ({ icon: Icon, label, value }) => (
+const InfoRow = ({ icon, label, value }) => (
   <div className="flex items-start gap-4 py-3 border-b border-slate-100 last:border-0">
-    <Icon className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" />
+    {React.createElement(icon, { className: 'w-5 h-5 text-slate-400 mt-0.5 shrink-0' })}
     <div>
       <p className="text-xs text-slate-500 font-bold uppercase tracking-wide">{label}</p>
       <p className="text-navy font-semibold">{value || '—'}</p>

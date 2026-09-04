@@ -637,6 +637,22 @@ class EngineerService {
    * ============================================================
    */
 
+  async getEngineerProfile(userId) {
+    const oid = toObjectId(userId, 'user ID');
+    const engineer = await User.findOne({
+      _id: oid,
+      role: ROLE.ENGINEER,
+    })
+      .select('-password -refreshToken')
+      .lean();
+
+    if (!engineer) {
+      throw new ApiError(404, 'Engineer not found');
+    }
+
+    return engineer;
+  }
+
   async updateProfile(
     userId,
     updateData = {}
@@ -697,8 +713,13 @@ class EngineerService {
       'serviceAreas',
       'availability',
       'availabilitySlots',
+      'availabilityStatus',
       'education',
       'certifications',
+      'certificates',
+      'specialization',
+      'experienceYears',
+      'portfolioMedia',
       'portfolio',
     ];
 
@@ -807,6 +828,21 @@ class EngineerService {
               return area;
             }
           );
+        } else if (field === 'specialization') {
+          updates['engineerProfile.specializations'] = [
+            updateData.engineerProfile[field],
+          ];
+        } else if (field === 'experienceYears') {
+          updates['engineerProfile.yearsOfExperience'] =
+            updateData.engineerProfile[field];
+        } else if (field === 'certificates') {
+          updates['engineerProfile.certifications'] =
+            updateData.engineerProfile[field];
+        } else if (field === 'portfolioMedia') {
+          updates['engineerProfile.portfolio'] =
+            updateData.engineerProfile[field].map((url) => ({
+              images: [url],
+            }));
         } else {
           updates[
             `engineerProfile.${field}`

@@ -15,8 +15,17 @@ class DesignService {
    * Create a new design
    */
   async createDesign(engineerId, designData) {
+    const specifications = designData.specifications
+      ? {
+          ...designData.specifications,
+          style: String(designData.specifications.style || '').toLowerCase(),
+          constructionType: String(designData.specifications.constructionType || '').toLowerCase(),
+        }
+      : designData.specifications;
+
     const design = await Design.create({
       ...designData,
+      specifications,
       engineerId,
     });
     return design;

@@ -136,11 +136,11 @@ const DashboardSkeleton = () => (
 const EmptyState = ({
   title,
   description,
-  icon: Icon = FileText,
+  icon = FileText,
 }) => (
   <div className="text-center py-12 px-5">
     <div className="w-16 h-16 mx-auto mb-5 rounded-3xl bg-slate-100 flex items-center justify-center">
-      <Icon className="w-8 h-8 text-slate-300" />
+      {React.createElement(icon, { className: 'w-8 h-8 text-slate-300' })}
     </div>
 
     <h4 className="font-black text-slate-700 mb-2">
@@ -159,13 +159,13 @@ const EmptyState = ({
    ========================================================================== */
 
 const MiniStat = ({
-  icon: Icon,
+  icon,
   label,
   value,
 }) => (
   <div className="group bg-white rounded-[1.75rem] border border-slate-200 p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
     <div className="w-11 h-11 rounded-2xl bg-gold/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-      <Icon className="w-5 h-5 text-gold" />
+      {React.createElement(icon, { className: 'w-5 h-5 text-gold' })}
     </div>
 
     <p className="text-2xl font-black text-navy">
@@ -186,7 +186,7 @@ const MiniStat = ({
 const StatCard = ({
   label,
   value,
-  icon: Icon,
+  icon,
   color,
 }) => (
   <div className="group relative overflow-hidden bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
@@ -199,7 +199,7 @@ const StatCard = ({
           color
         )}
       >
-        <Icon className="w-6 h-6" />
+        {React.createElement(icon, { className: 'w-6 h-6' })}
       </div>
 
       <div className="min-w-0">
@@ -591,6 +591,36 @@ const EngineerDashboard = () => {
               </p>
             </div>
           </div>
+
+          {!isVerified && (
+            <div className={cn(
+              'mb-8 rounded-[1.75rem] border px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4',
+              verificationStatus === 'rejected'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-amber-50 border-amber-200'
+            )}>
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-black text-slate-800">
+                    {verificationStatus === 'rejected'
+                      ? 'Verification needs attention'
+                      : 'Pending admin verification'}
+                  </p>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Your profile, dashboard, drafts, and uploads remain available. Public blueprint publishing unlocks after verification.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/engineer/verification"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700 transition"
+              >
+                Review verification
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          )}
 
 
           <div className="flex flex-wrap items-center gap-3">

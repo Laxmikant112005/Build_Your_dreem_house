@@ -58,7 +58,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, allowedOrigins[0]); // fallback to primary origin
+      callback(new Error('Origin is not allowed by CORS'));
     }
   },
   credentials: true,
@@ -133,7 +133,9 @@ app.use('/api', routes);
 
 // Convenience aliases (older frontend/service paths)
 // These help prevent "connection refused" / "route not found" issues when clients call `/api/v1/auth/...`.
-app.use(`/${config.apiVersion}`, routes);
+// The canonical frontend base URL is `/api/v1`; mounting the router at `/v1`
+// would produce an invalid `/v1/v1/...` path because the router already owns
+// the version prefix.
 
 
 // API documentation endpoint

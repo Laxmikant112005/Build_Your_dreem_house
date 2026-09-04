@@ -257,6 +257,15 @@ const updateEngineerProfile = asyncHandler(
   }
 );
 
+const getEngineerProfile = asyncHandler(async (req, res) => {
+  const userId = requireAuthenticatedUserId(req, res);
+  if (!userId) return;
+
+  const profile = await engineerService.getEngineerProfile(userId);
+
+  return ApiResponse.ok(res, 'Engineer profile retrieved successfully', profile);
+});
+
 /**
  * Update authenticated engineer availability.
  *
@@ -493,6 +502,7 @@ module.exports = {
   getEngineerDesigns,
   getEngineerReviews,
   updateEngineerProfile,
+  getEngineerProfile,
   updateAvailability,
   addPortfolioItem,
   removePortfolioItem,

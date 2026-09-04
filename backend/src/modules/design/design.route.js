@@ -17,16 +17,15 @@ router.get('/', designController.getDesigns);
 router.get('/featured', designController.getFeaturedDesigns);
 router.get('/trending', designController.getTrendingDesigns);
 router.get('/filters/options', designController.getFilterOptions);
-router.get('/:id', optionalAuth, param('id').isMongoId(), validate, designController.getDesignById);
 router.get('/slug/:slug', designController.getDesignBySlug);
+router.get('/engineer/my-designs', authenticate, authorize('engineer'), designController.getMyDesigns);
+router.get('/:id', optionalAuth, param('id').isMongoId(), validate, designController.getDesignById);
 
 // Protected routes - Engineer
 router.post('/', authenticate, authorize('engineer', 'admin'), validateJoi(designValidator.createDesign, 'body'), designController.createDesign);
 router.put('/:id', authenticate, authorize('engineer', 'admin'), param('id').isMongoId(), validateJoi(designValidator.createDesign, 'body'), validate, designController.updateDesign);
 router.delete('/:id', authenticate, authorize('engineer', 'admin'), param('id').isMongoId(), validate, designController.deleteDesign);
 router.post('/:id/submit', authenticate, authorize('engineer'), param('id').isMongoId(), validate, designController.submitForApproval);
-router.get('/engineer/my-designs', authenticate, authorize('engineer'), designController.getMyDesigns);
-
 // Protected routes - User
 router.post('/:id/like', authenticate, param('id').isMongoId(), validate, designController.toggleLike);
 router.get('/:id/related', designController.getRelatedDesigns);

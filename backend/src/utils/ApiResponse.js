@@ -20,6 +20,7 @@ class ApiResponse {
       success: true,
       message,
       data,
+      ...(meta?.pagination && { pagination: meta.pagination }),
       ...(meta && { meta }),
     });
   }

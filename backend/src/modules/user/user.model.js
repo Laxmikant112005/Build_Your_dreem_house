@@ -6,11 +6,11 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const { ROLE } = require('../../config/roles');
+const { ROLE } = require('../../constants/roles');
 const {
   VERIFICATION_STATUS,
   AI_PROVIDERS,
-} = require('../../config/enums');
+} = require('../../constants/enums');
 
 const userSchema = new mongoose.Schema(
   {
@@ -198,6 +198,12 @@ const userSchema = new mongoose.Schema(
           type: String,
         },
       ],
+
+      availabilityStatus: {
+        type: String,
+        enum: ['AVAILABLE', 'BUSY', 'ON_LEAVE'],
+        default: 'AVAILABLE',
+      },
 
       hourlyRate: {
         type: Number,

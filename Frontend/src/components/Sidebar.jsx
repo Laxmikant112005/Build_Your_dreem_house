@@ -54,7 +54,7 @@ const menuItems = {
     {
       name: "My Blueprints",
       icon: LayoutGrid,
-      path: "/engineer/designs",
+      path: "/engineer/blueprints",
     },
     {
       name: "Upload Blueprint",

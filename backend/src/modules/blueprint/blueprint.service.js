@@ -5,6 +5,7 @@
 
 const mongoose = require('mongoose');
 const Blueprint = require('./blueprint.model');
+const User = require('../user/user.model');
 const ApiError = require('../../utils/ApiError');
 const { BLUEPRINT_STATUS } = require('../../constants/enums');
 const { cache } = require('../../config/redis');
@@ -211,6 +212,12 @@ class BlueprintService {
     const blueprint = await Blueprint.findOne({ _id: blueprintId, engineerId });
     if (!blueprint) throw new ApiError(404, 'Blueprint not found');
     if (blueprint.status !== BLUEPRINT_STATUS.DRAFT) throw new ApiError(400, 'Blueprint already submitted');
+
+    const engineer = await User.findById(engineerId).select('engineerProfile.isVerified engineerProfile.verificationStatus');
+    if (!engineer?.engineerProfile?.isVerified) {
+      throw new ApiError(403, 'Verification is required before publishing a blueprint');
+    }
+
     blueprint.status = BLUEPRINT_STATUS.PENDING;
     await blueprint.save();
     return blueprint;
@@ -222,6 +229,10 @@ class BlueprintService {
   async approveBlueprint(blueprintId) {
     const blueprint = await Blueprint.findById(blueprintId);
     if (!blueprint) throw new ApiError(404, 'Blueprint not found');
+    const engineer = await User.findById(blueprint.engineerId).select('engineerProfile.isVerified');
+    if (!engineer?.engineerProfile?.isVerified) {
+      throw new ApiError(403, 'Engineer verification is required before publication');
+    }
     blueprint.status = BLUEPRINT_STATUS.APPROVED;
     blueprint.publishedAt = new Date();
     await blueprint.save();

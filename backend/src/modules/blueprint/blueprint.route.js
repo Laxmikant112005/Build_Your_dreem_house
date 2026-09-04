@@ -19,6 +19,11 @@ router.get('/trending', blueprintController.getTrendingBlueprints);
 router.get('/recommended', authenticate, blueprintController.getRecommendedBlueprints);
 router.get('/filters/options', blueprintController.getFilterOptions);
 router.get('/slug/:slug', blueprintController.getBlueprintBySlug);
+router.get('/engineer/my-blueprints',
+  authenticate,
+  authorize('engineer'),
+  blueprintController.getMyBlueprints
+);
 router.get('/:id', optionalAuth, param('id').isMongoId(), validate, blueprintController.getBlueprintById);
 router.get('/:id/related', blueprintController.getRelatedBlueprints);
 
@@ -50,11 +55,6 @@ router.post('/:id/submit',
   param('id').isMongoId(),
   validate,
   blueprintController.submitForApproval
-);
-router.get('/engineer/my-blueprints',
-  authenticate,
-  authorize('engineer'),
-  blueprintController.getMyBlueprints
 );
 
 // Protected routes - User

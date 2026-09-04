@@ -98,6 +98,8 @@ const authenticate = async (req, res, next) => {
 
     req.user = user;
     req.userId = user._id.toString();
+    req.user.id = req.userId;
+    req.user.verificationStatus = getVerificationStatus(user);
 
     next();
   } catch (error) {
@@ -128,6 +130,8 @@ const optionalAuth = async (req, res, next) => {
 
     req.user = user;
     req.userId = user._id.toString();
+    req.user.id = req.userId;
+    req.user.verificationStatus = getVerificationStatus(user);
   } catch (error) {
     logger.warn(
       `Optional authentication failed: ${error.message}`
@@ -138,6 +142,14 @@ const optionalAuth = async (req, res, next) => {
   }
 
   next();
+};
+
+const getVerificationStatus = (user) => {
+  if (user?.engineerProfile?.isVerified === true) return 'VERIFIED';
+
+  return String(
+    user?.engineerProfile?.verificationStatus || 'PENDING'
+  ).toUpperCase();
 };
 
 /**
